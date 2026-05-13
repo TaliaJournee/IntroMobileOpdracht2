@@ -303,7 +303,7 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
                 },
                 onTap: _setLocationFromMap,
                 myLocationButtonEnabled: true,
-                zoomControlsEnabled: false,
+                zoomControlsEnabled: true,
               ),
             ),
           ),

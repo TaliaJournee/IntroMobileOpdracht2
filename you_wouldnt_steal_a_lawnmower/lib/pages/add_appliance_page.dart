@@ -272,7 +272,7 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
                 },
                 onTap: _setLocationFromMap,
                 myLocationButtonEnabled: true,
-                zoomControlsEnabled: false,
+                zoomControlsEnabled: true,
               ),
             ),
           ),
