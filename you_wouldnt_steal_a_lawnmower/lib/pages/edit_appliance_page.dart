@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../services/location_service.dart';
 import '../constants/categories.dart';
 import '../models/appliance.dart';
 import '../widgets/date_button.dart';
@@ -21,12 +24,15 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
   final _locationController = TextEditingController();
   final _priceController = TextEditingController();
   final _imageUrlController = TextEditingController();
+  final _locationService = const LocationService();
 
   late String _category;
   late DateTime _availableFrom;
   late DateTime _availableTo;
 
   bool _isSaving = false;
+  GeoPoint? _selectedGeoPoint;
+  bool _isGettingLocation = false;
 
   @override
   void initState() {
@@ -37,6 +43,14 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
     _locationController.text = widget.appliance.location;
     _priceController.text = widget.appliance.pricePerDay.toStringAsFixed(2);
     _imageUrlController.text = widget.appliance.imageUrl;
+
+    if (widget.appliance.latitude != null &&
+        widget.appliance.longitude != null) {
+      _selectedGeoPoint = GeoPoint(
+        widget.appliance.latitude!,
+        widget.appliance.longitude!,
+      );
+    }
 
     _category = applianceCategories.contains(widget.appliance.category)
         ? widget.appliance.category
@@ -56,6 +70,17 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
     super.dispose();
   }
 
+  DateTime _safeInitialDate(DateTime preferred) {
+    final today = DateTime.now();
+    final firstDate = DateTime(today.year, today.month, today.day);
+    final lastDate = DateTime(today.year + 2);
+
+    if (preferred.isBefore(firstDate)) return firstDate;
+    if (preferred.isAfter(lastDate)) return lastDate;
+
+    return preferred;
+  }
+
   Future<void> _pickDate({required bool isStart}) async {
     final today = DateTime.now();
 
@@ -63,7 +88,7 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
       context: context,
       firstDate: DateTime(today.year, today.month, today.day),
       lastDate: DateTime(today.year + 2),
-      initialDate: isStart ? _availableFrom : _availableTo,
+      initialDate: _safeInitialDate(isStart ? _availableFrom : _availableTo),
     );
 
     if (selected == null) return;
@@ -92,6 +117,34 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
     final hasHost = uri.host.isNotEmpty;
 
     return hasValidScheme && hasHost;
+  }
+
+  Future<void> _useCurrentLocation() async {
+    setState(() => _isGettingLocation = true);
+
+    try {
+      final position = await _locationService.getCurrentPosition();
+
+      if (!mounted) return;
+
+      setState(() {
+        _selectedGeoPoint = GeoPoint(position.latitude, position.longitude);
+      });
+
+      _showMessage('Locatie gekozen. Je kan de marker nog verplaatsen.');
+    } catch (error) {
+      _showMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _isGettingLocation = false);
+      }
+    }
+  }
+
+  void _setLocationFromMap(LatLng position) {
+    setState(() {
+      _selectedGeoPoint = GeoPoint(position.latitude, position.longitude);
+    });
   }
 
   Future<void> _saveChanges() async {
@@ -127,6 +180,11 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
       return;
     }
 
+    if (_selectedGeoPoint == null) {
+      _showMessage('Kies ook de exacte locatie van het toestel.');
+      return;
+    }
+
     if (_availableTo.isBefore(_availableFrom)) {
       _showMessage('De einddatum mag niet voor de begindatum liggen.');
       return;
@@ -142,6 +200,8 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
     setState(() => _isSaving = true);
 
     try {
+      final geoFirePoint = GeoFirePoint(_selectedGeoPoint!);
+
       await FirebaseFirestore.instance
           .collection('appliances')
           .doc(widget.appliance.id)
@@ -151,6 +211,7 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
             'category': _category,
             'location': location,
             'locationLower': location.toLowerCase(),
+            'geo': geoFirePoint.data,
             'pricePerDay': price,
             'imageUrl': imageUrl,
             'availableFrom': Timestamp.fromDate(_availableFrom),
@@ -175,6 +236,85 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildLocationPicker() {
+    final selectedGeoPoint = _selectedGeoPoint;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _isGettingLocation ? null : _useCurrentLocation,
+          icon: const Icon(Icons.my_location),
+          label: Text(
+            _isGettingLocation
+                ? 'Locatie ophalen...'
+                : 'Gebruik mijn huidige locatie',
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        if (selectedGeoPoint == null)
+          Container(
+            height: 140,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black26),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Dit toestel heeft nog geen exacte kaartlocatie. Kies je huidige locatie en verplaats de marker indien nodig.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        else ...[
+          Text(
+            'Gekozen locatie: ${selectedGeoPoint.latitude.toStringAsFixed(5)}, ${selectedGeoPoint.longitude.toStringAsFixed(5)}',
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 220,
+              child: GoogleMap(
+                key: ValueKey(
+                  '${selectedGeoPoint.latitude}-${selectedGeoPoint.longitude}',
+                ),
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(
+                    selectedGeoPoint.latitude,
+                    selectedGeoPoint.longitude,
+                  ),
+                  zoom: 15,
+                ),
+                markers: {
+                  Marker(
+                    markerId: const MarkerId('appliance-location'),
+                    position: LatLng(
+                      selectedGeoPoint.latitude,
+                      selectedGeoPoint.longitude,
+                    ),
+                    infoWindow: const InfoWindow(title: 'Locatie toestel'),
+                  ),
+                },
+                onTap: _setLocationFromMap,
+                myLocationButtonEnabled: true,
+                zoomControlsEnabled: false,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Tik op de kaart om de marker te verplaatsen.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -237,6 +377,10 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
                 border: OutlineInputBorder(),
               ),
             ),
+            const SizedBox(height: 12),
+
+            _buildLocationPicker(),
+
             const SizedBox(height: 12),
 
             TextField(

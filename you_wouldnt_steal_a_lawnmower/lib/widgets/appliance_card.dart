@@ -13,6 +13,18 @@ class ApplianceCard extends StatelessWidget {
     required this.onTap,
   });
 
+  String _formatDistance(double distanceInKm) {
+    if (distanceInKm < 1) {
+      return '${(distanceInKm * 1000).round()} m van jou';
+    }
+
+    if (distanceInKm < 10) {
+      return '${distanceInKm.toStringAsFixed(1)} km van jou';
+    }
+
+    return '${distanceInKm.round()} km van jou';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -59,6 +71,16 @@ class ApplianceCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text('${appliance.category} • ${appliance.location}'),
+              if (appliance.distanceInKm != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _formatDistance(appliance.distanceInKm!),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 4),
               Text(
                 '€${appliance.pricePerDay.toStringAsFixed(2)} / dag',

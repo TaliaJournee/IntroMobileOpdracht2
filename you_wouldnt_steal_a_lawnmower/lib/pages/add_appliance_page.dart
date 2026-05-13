@@ -1,7 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../services/location_service.dart';
 import '../constants/categories.dart';
 import '../widgets/date_button.dart';
 
@@ -18,11 +21,14 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
   final _locationController = TextEditingController();
   final _priceController = TextEditingController();
   final _imageUrlController = TextEditingController();
+  final _locationService = const LocationService();
 
   String _category = applianceCategories.first;
   DateTime? _availableFrom;
   DateTime? _availableTo;
   bool _isSaving = false;
+  GeoPoint? _selectedGeoPoint;
+  bool _isGettingLocation = false;
 
   @override
   void dispose() {
@@ -72,6 +78,34 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
     return hasValidScheme && hasHost;
   }
 
+  Future<void> _useCurrentLocation() async {
+    setState(() => _isGettingLocation = true);
+
+    try {
+      final position = await _locationService.getCurrentPosition();
+
+      if (!mounted) return;
+
+      setState(() {
+        _selectedGeoPoint = GeoPoint(position.latitude, position.longitude);
+      });
+
+      _showMessage('Locatie gekozen. Je kan de marker nog verplaatsen.');
+    } catch (error) {
+      _showMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _isGettingLocation = false);
+      }
+    }
+  }
+
+  void _setLocationFromMap(LatLng position) {
+    setState(() {
+      _selectedGeoPoint = GeoPoint(position.latitude, position.longitude);
+    });
+  }
+
   Future<void> _saveAppliance() async {
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
@@ -100,6 +134,11 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
       return;
     }
 
+    if (_selectedGeoPoint == null) {
+      _showMessage('Kies ook de exacte locatie van het toestel.');
+      return;
+    }
+
     if (_availableFrom == null || _availableTo == null) {
       _showMessage('Kies een beschikbaarheidsperiode.');
       return;
@@ -120,6 +159,8 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
     setState(() => _isSaving = true);
 
     try {
+      final geoFirePoint = GeoFirePoint(_selectedGeoPoint!);
+
       await FirebaseFirestore.instance.collection('appliances').add({
         'ownerId': user.uid,
         'ownerEmail': user.email ?? '',
@@ -128,6 +169,7 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
         'category': _category,
         'location': location,
         'locationLower': location.toLowerCase(),
+        'geo': geoFirePoint.data,
         'pricePerDay': price,
         'imageUrl': imageUrl,
         'availableFrom': Timestamp.fromDate(_availableFrom!),
@@ -146,6 +188,7 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
         _category = applianceCategories.first;
         _availableFrom = null;
         _availableTo = null;
+        _selectedGeoPoint = null;
       });
 
       _showMessage('Toestel toegevoegd.');
@@ -162,6 +205,85 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _buildLocationPicker() {
+    final selectedGeoPoint = _selectedGeoPoint;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _isGettingLocation ? null : _useCurrentLocation,
+          icon: const Icon(Icons.my_location),
+          label: Text(
+            _isGettingLocation
+                ? 'Locatie ophalen...'
+                : 'Gebruik mijn huidige locatie',
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        if (selectedGeoPoint == null)
+          Container(
+            height: 140,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black26),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Kies eerst je huidige locatie. Daarna kan je de marker op de kaart verplaatsen naar de exacte plaats van het toestel.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          )
+        else ...[
+          Text(
+            'Gekozen locatie: ${selectedGeoPoint.latitude.toStringAsFixed(5)}, ${selectedGeoPoint.longitude.toStringAsFixed(5)}',
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 220,
+              child: GoogleMap(
+                key: ValueKey(
+                  '${selectedGeoPoint.latitude}-${selectedGeoPoint.longitude}',
+                ),
+                initialCameraPosition: CameraPosition(
+                  target: LatLng(
+                    selectedGeoPoint.latitude,
+                    selectedGeoPoint.longitude,
+                  ),
+                  zoom: 15,
+                ),
+                markers: {
+                  Marker(
+                    markerId: const MarkerId('appliance-location'),
+                    position: LatLng(
+                      selectedGeoPoint.latitude,
+                      selectedGeoPoint.longitude,
+                    ),
+                    infoWindow: const InfoWindow(title: 'Locatie toestel'),
+                  ),
+                },
+                onTap: _setLocationFromMap,
+                myLocationButtonEnabled: true,
+                zoomControlsEnabled: false,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Tik op de kaart om de marker te verplaatsen.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -220,6 +342,10 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
               border: OutlineInputBorder(),
             ),
           ),
+          const SizedBox(height: 12),
+
+          _buildLocationPicker(),
+
           const SizedBox(height: 12),
 
           TextField(
