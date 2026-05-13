@@ -47,6 +47,28 @@ class _ReservationChatPageState extends State<ReservationChatPage> {
     return _isParticipant(reservation) && reservation.status == 'accepted';
   }
 
+  Future<void> _markChatAsRead(RentalReservation reservation) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+    if (!_isParticipant(reservation)) return;
+    if (reservation.lastMessageAt == null) return;
+
+    final readAt = reservation.chatReadAtBy[user.uid];
+
+    if (readAt != null && !readAt.isBefore(reservation.lastMessageAt!)) {
+      return;
+    }
+
+    try {
+      await _reservationRef.update({
+        'chatReadAtBy.${user.uid}': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Do not block the chat UI if marking as read fails.
+    }
+  }
+
   Future<void> _sendMessage(RentalReservation reservation) async {
     final user = FirebaseAuth.instance.currentUser;
     final text = _messageController.text.trim();
@@ -73,12 +95,27 @@ class _ReservationChatPageState extends State<ReservationChatPage> {
     setState(() => _isSending = true);
 
     try {
-      await _messagesRef.add({
+      final batch = FirebaseFirestore.instance.batch();
+      final messageDoc = _messagesRef.doc();
+      final serverTime = FieldValue.serverTimestamp();
+
+      batch.set(messageDoc, {
         'senderId': user.uid,
         'senderEmail': user.email ?? '',
         'text': text,
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': serverTime,
       });
+
+      batch.update(_reservationRef, {
+        'lastMessageAt': serverTime,
+        'lastMessageSenderId': user.uid,
+        'lastMessageSenderEmail': user.email ?? '',
+        'lastMessageText': text,
+        'chatReadAtBy.${user.uid}': serverTime,
+        'updatedAt': serverTime,
+      });
+
+      await batch.commit();
 
       _messageController.clear();
     } catch (error) {
@@ -275,6 +312,10 @@ class _ReservationChatPageState extends State<ReservationChatPage> {
         }
 
         final reservation = RentalReservation.fromDoc(doc);
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _markChatAsRead(reservation);
+        });
 
         return Scaffold(
           appBar: AppBar(

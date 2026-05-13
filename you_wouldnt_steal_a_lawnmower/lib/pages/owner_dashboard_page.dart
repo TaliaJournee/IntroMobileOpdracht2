@@ -28,6 +28,15 @@ class OwnerDashboardPage extends StatelessWidget {
     return reservation.status == 'accepted';
   }
 
+  bool _hasUnreadMessage(RentalReservation reservation) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return false;
+    if (!_canChat(reservation)) return false;
+
+    return reservation.hasUnreadMessageFor(user.uid);
+  }
+
   Future<void> _setStatus(
     BuildContext context,
     String reservationId,
@@ -135,6 +144,26 @@ class OwnerDashboardPage extends StatelessWidget {
     return reservation.status;
   }
 
+  Widget _buildChatButton(
+    BuildContext context,
+    RentalReservation reservation,
+    bool hasUnreadMessage,
+  ) {
+    if (hasUnreadMessage) {
+      return FilledButton.icon(
+        onPressed: () => _openChat(context, reservation),
+        icon: const Icon(Icons.mark_chat_unread),
+        label: const Text('Nieuw bericht'),
+      );
+    }
+
+    return OutlinedButton.icon(
+      onPressed: () => _openChat(context, reservation),
+      icon: const Icon(Icons.chat),
+      label: const Text('Berichten'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -165,6 +194,12 @@ class OwnerDashboardPage extends StatelessWidget {
                 if (aNeedsReturn && !bNeedsReturn) return -1;
                 if (!aNeedsReturn && bNeedsReturn) return 1;
 
+                final aUnread = _hasUnreadMessage(a);
+                final bUnread = _hasUnreadMessage(b);
+
+                if (aUnread && !bUnread) return -1;
+                if (!aUnread && bUnread) return 1;
+
                 return b.startDate.compareTo(a.startDate);
               });
 
@@ -183,6 +218,7 @@ class OwnerDashboardPage extends StatelessWidget {
               reservation,
             );
             final canChat = _canChat(reservation);
+            final hasUnreadMessage = _hasUnreadMessage(reservation);
 
             return Card(
               child: Padding(
@@ -203,6 +239,20 @@ class OwnerDashboardPage extends StatelessWidget {
                     Text(
                       'Totaal: €${reservation.totalPrice.toStringAsFixed(2)}',
                     ),
+
+                    if (hasUnreadMessage) ...[
+                      const SizedBox(height: 8),
+                      const Row(
+                        children: [
+                          Icon(Icons.notifications_active, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'Nieuw bericht in deze reservatie.',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
 
                     if (reservation.status == 'pending') ...[
                       const SizedBox(height: 8),
@@ -226,15 +276,6 @@ class OwnerDashboardPage extends StatelessWidget {
                       ),
                     ],
 
-                    if (canChat) ...[
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => _openChat(context, reservation),
-                        icon: const Icon(Icons.chat),
-                        label: const Text('Berichten'),
-                      ),
-                    ],
-
                     if (needsReturnConfirmation) ...[
                       const SizedBox(height: 8),
                       FilledButton.icon(
@@ -242,6 +283,11 @@ class OwnerDashboardPage extends StatelessWidget {
                         icon: const Icon(Icons.assignment_turned_in),
                         label: const Text('Teruggave bevestigen'),
                       ),
+                    ],
+
+                    if (canChat) ...[
+                      const SizedBox(height: 8),
+                      _buildChatButton(context, reservation, hasUnreadMessage),
                     ],
 
                     if (reservation.status == 'returned') ...[

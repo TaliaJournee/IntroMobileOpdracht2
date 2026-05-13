@@ -13,6 +13,15 @@ class MyReservationsPage extends StatelessWidget {
     return reservation.status == 'accepted';
   }
 
+  bool _hasUnreadMessage(RentalReservation reservation) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return false;
+    if (!_canChat(reservation)) return false;
+
+    return reservation.hasUnreadMessageFor(user.uid);
+  }
+
   Future<void> _cancelReservation(
     BuildContext context,
     String reservationId,
@@ -58,6 +67,26 @@ class MyReservationsPage extends StatelessWidget {
     return status;
   }
 
+  Widget _buildChatButton(
+    BuildContext context,
+    RentalReservation reservation,
+    bool hasUnreadMessage,
+  ) {
+    if (hasUnreadMessage) {
+      return FilledButton.icon(
+        onPressed: () => _openChat(context, reservation),
+        icon: const Icon(Icons.mark_chat_unread),
+        label: const Text('Nieuw bericht'),
+      );
+    }
+
+    return OutlinedButton.icon(
+      onPressed: () => _openChat(context, reservation),
+      icon: const Icon(Icons.chat),
+      label: const Text('Berichten'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -78,7 +107,15 @@ class MyReservationsPage extends StatelessWidget {
 
         final reservations =
             snapshot.data!.docs.map(RentalReservation.fromDoc).toList()
-              ..sort((a, b) => b.startDate.compareTo(a.startDate));
+              ..sort((a, b) {
+                final aUnread = _hasUnreadMessage(a);
+                final bUnread = _hasUnreadMessage(b);
+
+                if (aUnread && !bUnread) return -1;
+                if (!aUnread && bUnread) return 1;
+
+                return b.startDate.compareTo(a.startDate);
+              });
 
         if (reservations.isEmpty) {
           return const Center(child: Text('Je hebt nog geen reserveringen.'));
@@ -90,6 +127,7 @@ class MyReservationsPage extends StatelessWidget {
           itemBuilder: (context, index) {
             final reservation = reservations[index];
             final canChat = _canChat(reservation);
+            final hasUnreadMessage = _hasUnreadMessage(reservation);
 
             return Card(
               child: Padding(
@@ -110,6 +148,20 @@ class MyReservationsPage extends StatelessWidget {
                       'Totaal: €${reservation.totalPrice.toStringAsFixed(2)}',
                     ),
 
+                    if (hasUnreadMessage) ...[
+                      const SizedBox(height: 8),
+                      const Row(
+                        children: [
+                          Icon(Icons.notifications_active, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            'Nieuw bericht in deze reservatie.',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
+
                     if (reservation.status == 'pending') ...[
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
@@ -122,11 +174,7 @@ class MyReservationsPage extends StatelessWidget {
 
                     if (canChat) ...[
                       const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => _openChat(context, reservation),
-                        icon: const Icon(Icons.chat),
-                        label: const Text('Berichten'),
-                      ),
+                      _buildChatButton(context, reservation, hasUnreadMessage),
                     ],
 
                     if (reservation.status == 'returned') ...[
