@@ -4,21 +4,58 @@ import 'package:flutter/material.dart';
 
 import '../models/rental_reservation.dart';
 import '../widgets/date_button.dart';
+import 'reservation_chat_page.dart';
 
 class MyReservationsPage extends StatelessWidget {
   const MyReservationsPage({super.key});
 
-  Future<void> _cancelReservation(BuildContext context, String reservationId) async {
-    await FirebaseFirestore.instance
-        .collection('reservations')
-        .doc(reservationId)
-        .update({'status': 'cancelled'});
+  bool _canChat(RentalReservation reservation) {
+    return reservation.status == 'accepted';
+  }
 
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Reservatie geannuleerd.')),
-      );
+  Future<void> _cancelReservation(
+    BuildContext context,
+    String reservationId,
+  ) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('reservations')
+          .doc(reservationId)
+          .update({
+            'status': 'cancelled',
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reservatie geannuleerd.')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Annuleren mislukt: $error')));
+      }
     }
+  }
+
+  void _openChat(BuildContext context, RentalReservation reservation) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReservationChatPage(reservation: reservation),
+      ),
+    );
+  }
+
+  String _statusLabel(String status) {
+    if (status == 'pending') return 'In afwachting';
+    if (status == 'accepted') return 'Geaccepteerd';
+    if (status == 'rejected') return 'Geweigerd';
+    if (status == 'cancelled') return 'Geannuleerd';
+    if (status == 'returned') return 'Teruggebracht';
+
+    return status;
   }
 
   @override
@@ -39,10 +76,9 @@ class MyReservationsPage extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final reservations = snapshot.data!.docs
-            .map(RentalReservation.fromDoc)
-            .toList()
-          ..sort((a, b) => b.startDate.compareTo(a.startDate));
+        final reservations =
+            snapshot.data!.docs.map(RentalReservation.fromDoc).toList()
+              ..sort((a, b) => b.startDate.compareTo(a.startDate));
 
         if (reservations.isEmpty) {
           return const Center(child: Text('Je hebt nog geen reserveringen.'));
@@ -53,6 +89,8 @@ class MyReservationsPage extends StatelessWidget {
           itemCount: reservations.length,
           itemBuilder: (context, index) {
             final reservation = reservations[index];
+            final canChat = _canChat(reservation);
+
             return Card(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -64,15 +102,38 @@ class MyReservationsPage extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
-                    Text('${formatDate(reservation.startDate)} - ${formatDate(reservation.endDate)}'),
-                    Text('Status: ${reservation.status}'),
-                    Text('Totaal: €${reservation.totalPrice.toStringAsFixed(2)}'),
+                    Text(
+                      '${formatDate(reservation.startDate)} - ${formatDate(reservation.endDate)}',
+                    ),
+                    Text('Status: ${_statusLabel(reservation.status)}'),
+                    Text(
+                      'Totaal: €${reservation.totalPrice.toStringAsFixed(2)}',
+                    ),
+
                     if (reservation.status == 'pending') ...[
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
-                        onPressed: () => _cancelReservation(context, reservation.id),
+                        onPressed: () =>
+                            _cancelReservation(context, reservation.id),
                         icon: const Icon(Icons.cancel),
                         label: const Text('Annuleren'),
+                      ),
+                    ],
+
+                    if (canChat) ...[
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _openChat(context, reservation),
+                        icon: const Icon(Icons.chat),
+                        label: const Text('Berichten'),
+                      ),
+                    ],
+
+                    if (reservation.status == 'returned') ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'De teruggave is bevestigd door de verhuurder.',
+                        style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ],
                   ],

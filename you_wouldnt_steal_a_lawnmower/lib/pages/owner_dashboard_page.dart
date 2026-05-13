@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/rental_reservation.dart';
 import '../widgets/date_button.dart';
+import 'reservation_chat_page.dart';
 
 class OwnerDashboardPage extends StatelessWidget {
   const OwnerDashboardPage({super.key});
@@ -21,6 +22,10 @@ class OwnerDashboardPage extends StatelessWidget {
 
   bool _needsReturnConfirmation(RentalReservation reservation) {
     return reservation.status == 'accepted' && _isFinished(reservation);
+  }
+
+  bool _canChat(RentalReservation reservation) {
+    return reservation.status == 'accepted';
   }
 
   Future<void> _setStatus(
@@ -104,6 +109,14 @@ class OwnerDashboardPage extends StatelessWidget {
     }
   }
 
+  void _openChat(BuildContext context, RentalReservation reservation) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReservationChatPage(reservation: reservation),
+      ),
+    );
+  }
+
   String _statusLabel(RentalReservation reservation) {
     if (reservation.status == 'pending') return 'In afwachting';
 
@@ -169,6 +182,7 @@ class OwnerDashboardPage extends StatelessWidget {
             final needsReturnConfirmation = _needsReturnConfirmation(
               reservation,
             );
+            final canChat = _canChat(reservation);
 
             return Card(
               child: Padding(
@@ -181,7 +195,6 @@ class OwnerDashboardPage extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
-
                     Text('Huurder: ${reservation.renterEmail}'),
                     Text(
                       '${formatDate(reservation.startDate)} - ${formatDate(reservation.endDate)}',
@@ -210,6 +223,15 @@ class OwnerDashboardPage extends StatelessWidget {
                             label: const Text('Weigeren'),
                           ),
                         ],
+                      ),
+                    ],
+
+                    if (canChat) ...[
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: () => _openChat(context, reservation),
+                        icon: const Icon(Icons.chat),
+                        label: const Text('Berichten'),
                       ),
                     ],
 
