@@ -1,12 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-import '../services/location_service.dart';
 import '../constants/categories.dart';
 import '../models/appliance.dart';
+import '../services/location_service.dart';
 import '../widgets/date_button.dart';
 
 class EditAppliancePage extends StatefulWidget {
@@ -254,7 +256,6 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
           ),
         ),
         const SizedBox(height: 8),
-
         if (selectedGeoPoint == null)
           Container(
             height: 140,
@@ -299,17 +300,28 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
                       selectedGeoPoint.longitude,
                     ),
                     infoWindow: const InfoWindow(title: 'Locatie toestel'),
+                    draggable: true,
+                    onDragEnd: _setLocationFromMap,
                   ),
                 },
                 onTap: _setLocationFromMap,
                 myLocationButtonEnabled: true,
                 zoomControlsEnabled: true,
+                zoomGesturesEnabled: true,
+                scrollGesturesEnabled: true,
+                rotateGesturesEnabled: true,
+                tiltGesturesEnabled: true,
+                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                  Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer(),
+                  ),
+                },
               ),
             ),
           ),
           const SizedBox(height: 6),
           const Text(
-            'Tik op de kaart om de marker te verplaatsen.',
+            'Tik op de kaart of sleep de marker om de locatie te verplaatsen.',
             style: TextStyle(fontSize: 12),
           ),
         ],
@@ -336,7 +348,6 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
               ),
             ),
             const SizedBox(height: 12),
-
             TextField(
               controller: _descriptionController,
               minLines: 3,
@@ -347,7 +358,6 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
               ),
             ),
             const SizedBox(height: 12),
-
             DropdownButtonFormField<String>(
               initialValue: _category,
               decoration: const InputDecoration(
@@ -369,7 +379,6 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
               },
             ),
             const SizedBox(height: 12),
-
             TextField(
               controller: _locationController,
               decoration: const InputDecoration(
@@ -378,11 +387,8 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
               ),
             ),
             const SizedBox(height: 12),
-
             _buildLocationPicker(),
-
             const SizedBox(height: 12),
-
             TextField(
               controller: _priceController,
               keyboardType: const TextInputType.numberWithOptions(
@@ -395,7 +401,6 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
               ),
             ),
             const SizedBox(height: 12),
-
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -413,7 +418,6 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
               ],
             ),
             const SizedBox(height: 12),
-
             TextField(
               controller: _imageUrlController,
               onChanged: (_) => setState(() {}),
@@ -423,7 +427,6 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
                 border: OutlineInputBorder(),
               ),
             ),
-
             if (imageUrl.isNotEmpty) ...[
               const SizedBox(height: 12),
               ClipRRect(
@@ -444,9 +447,7 @@ class _EditAppliancePageState extends State<EditAppliancePage> {
                 ),
               ),
             ],
-
             const SizedBox(height: 20),
-
             FilledButton.icon(
               onPressed: _isSaving ? null : _saveChanges,
               icon: const Icon(Icons.save),
