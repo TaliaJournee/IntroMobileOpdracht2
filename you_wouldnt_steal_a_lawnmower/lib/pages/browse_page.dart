@@ -39,6 +39,26 @@ class _BrowsePageState extends State<BrowsePage> {
     return FirebaseFirestore.instance.collection('appliances');
   }
 
+  DateTime _dateOnly(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  DateTime _todayStart() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  Appliance _withVisibleAvailableFrom(Appliance appliance) {
+    final today = _todayStart();
+    final availableFromDate = _dateOnly(appliance.availableFrom);
+
+    if (availableFromDate.isBefore(today)) {
+      return appliance.copyWith(availableFrom: today);
+    }
+
+    return appliance;
+  }
+
   Future<void> _useMyLocationForSearch() async {
     setState(() => _isGettingLocation = true);
 
@@ -132,18 +152,29 @@ class _BrowsePageState extends State<BrowsePage> {
 
   List<Appliance> _filterAndSortAppliances(List<Appliance> appliances) {
     final locationFilter = _locationController.text.trim().toLowerCase();
+    final today = _todayStart();
 
-    final filtered = appliances.where((appliance) {
-      final categoryMatches =
-          _selectedCategory == 'Alle' ||
-          appliance.category == _selectedCategory;
+    final filtered = appliances
+        .where((appliance) {
+          final availableToDate = _dateOnly(appliance.availableTo);
 
-      final locationMatches =
-          locationFilter.isEmpty ||
-          appliance.location.toLowerCase().contains(locationFilter);
+          final isStillAvailable = !availableToDate.isBefore(today);
 
-      return categoryMatches && locationMatches;
-    }).toList();
+          final categoryMatches =
+              _selectedCategory == 'Alle' ||
+              appliance.category == _selectedCategory;
+
+          final locationMatches =
+              locationFilter.isEmpty ||
+              appliance.location.toLowerCase().contains(locationFilter);
+
+          return appliance.isActive &&
+              isStillAvailable &&
+              categoryMatches &&
+              locationMatches;
+        })
+        .map(_withVisibleAvailableFrom)
+        .toList();
 
     if (_searchCenter != null) {
       filtered.sort((a, b) {
