@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:geoflutterfire_plus/geoflutterfire_plus.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -21,6 +23,7 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
   final _locationController = TextEditingController();
   final _priceController = TextEditingController();
   final _imageUrlController = TextEditingController();
+
   final _locationService = const LocationService();
 
   String _category = applianceCategories.first;
@@ -69,7 +72,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
     if (url.isEmpty) return true;
 
     final uri = Uri.tryParse(url);
-
     if (uri == null) return false;
 
     final hasValidScheme = uri.scheme == 'http' || uri.scheme == 'https';
@@ -113,7 +115,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
     final priceText = _priceController.text.trim().replaceAll(',', '.');
     final price = double.tryParse(priceText);
     final imageUrl = _imageUrlController.text.trim();
-
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
@@ -223,7 +224,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
           ),
         ),
         const SizedBox(height: 8),
-
         if (selectedGeoPoint == null)
           Container(
             height: 140,
@@ -235,14 +235,17 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             child: const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Kies eerst je huidige locatie. Daarna kan je de marker op de kaart verplaatsen naar de exacte plaats van het toestel.',
+                'Kies eerst je huidige locatie.\n'
+                'Daarna kan je op de kaart tikken of de marker slepen naar de exacte plaats van het toestel.',
                 textAlign: TextAlign.center,
               ),
             ),
           )
         else ...[
           Text(
-            'Gekozen locatie: ${selectedGeoPoint.latitude.toStringAsFixed(5)}, ${selectedGeoPoint.longitude.toStringAsFixed(5)}',
+            'Gekozen locatie: '
+            '${selectedGeoPoint.latitude.toStringAsFixed(5)}, '
+            '${selectedGeoPoint.longitude.toStringAsFixed(5)}',
           ),
           const SizedBox(height: 8),
           ClipRRect(
@@ -268,17 +271,28 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
                       selectedGeoPoint.longitude,
                     ),
                     infoWindow: const InfoWindow(title: 'Locatie toestel'),
+                    draggable: true,
+                    onDragEnd: _setLocationFromMap,
                   ),
                 },
                 onTap: _setLocationFromMap,
                 myLocationButtonEnabled: true,
                 zoomControlsEnabled: true,
+                zoomGesturesEnabled: true,
+                scrollGesturesEnabled: true,
+                rotateGesturesEnabled: true,
+                tiltGesturesEnabled: true,
+                gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                  Factory<OneSequenceGestureRecognizer>(
+                    () => EagerGestureRecognizer(),
+                  ),
+                },
               ),
             ),
           ),
           const SizedBox(height: 6),
           const Text(
-            'Tik op de kaart om de marker te verplaatsen.',
+            'Tik op de kaart of sleep de marker om de locatie te verplaatsen.',
             style: TextStyle(fontSize: 12),
           ),
         ],
@@ -303,7 +317,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             ),
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _descriptionController,
             minLines: 3,
@@ -314,7 +327,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             ),
           ),
           const SizedBox(height: 12),
-
           DropdownButtonFormField<String>(
             initialValue: _category,
             decoration: const InputDecoration(
@@ -323,8 +335,10 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             ),
             items: applianceCategories
                 .map(
-                  (category) =>
-                      DropdownMenuItem(value: category, child: Text(category)),
+                  (category) => DropdownMenuItem<String>(
+                    value: category,
+                    child: Text(category),
+                  ),
                 )
                 .toList(),
             onChanged: (value) {
@@ -334,7 +348,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             },
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _locationController,
             decoration: const InputDecoration(
@@ -343,11 +356,8 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             ),
           ),
           const SizedBox(height: 12),
-
           _buildLocationPicker(),
-
           const SizedBox(height: 12),
-
           TextField(
             controller: _priceController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -358,7 +368,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             ),
           ),
           const SizedBox(height: 12),
-
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -376,7 +385,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
             ],
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _imageUrlController,
             onChanged: (_) => setState(() {}),
@@ -386,7 +394,6 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
               border: OutlineInputBorder(),
             ),
           ),
-
           if (imageUrl.isNotEmpty) ...[
             const SizedBox(height: 12),
             ClipRRect(
@@ -407,9 +414,7 @@ class _AddAppliancePageState extends State<AddAppliancePage> {
               ),
             ),
           ],
-
           const SizedBox(height: 20),
-
           FilledButton.icon(
             onPressed: _isSaving ? null : _saveAppliance,
             icon: const Icon(Icons.save),
